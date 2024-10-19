@@ -7,8 +7,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class LivroMessageListener {
 
-    @RabbitListener(queues = RabbitMQConfig.QUEUE_NAME)
-    public void mensagem(String mensagem) {
-        System.out.println("############################ TESTEEEEEEE #############################\n" + mensagem);
-    }
+    //TODO caso queira consumir a mensagem, basta remover os comentários
+//    @RabbitListener(queues = RabbitMQConfig.QUEUE_NAME)
+//    public void mensagem(String mensagem) {
+//        System.out.println("############################ TESTEEEEEEE #############################\n" + mensagem);
+//    }
 }

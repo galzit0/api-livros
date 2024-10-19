@@ -94,6 +94,7 @@ public class LivroController {
     }
 
     @DeleteMapping(path = "/delete/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyAuthority('Administrador')")
     @Operation(
             summary = "Deletar Livro.",
             description = "Deleta um Livro já existente no sistema."
@@ -107,5 +108,24 @@ public class LivroController {
                 .orElse(new ResponseEntity<>(HttpStatus.NO_CONTENT));
     }
 
+    @PostMapping("/alugar/{id}")
+    @PreAuthorize("hasAnyAuthority('Administrador')")
+    @Operation(
+            summary = "Alugar Livro",
+            description = "Aluga um livro e envia uma confirmação por e-mail."
+    )
+    public ResponseEntity<String> alugarLivro(@PathVariable("id") Long id) {
+        return livroService.alugarLivro(id);
+    }
+
+    @PutMapping("/devolver/{id}")
+    @PreAuthorize("hasAnyAuthority('Administrador')")
+    @Operation(
+            summary = "Devolve Livro",
+            description = "Devolve um livro e envia uma confirmação por e-mail."
+    )
+    public ResponseEntity<String> devolverLivro(@PathVariable("id") Long id) {
+        return livroService.devolverLivro(id);
+    }
 
 }

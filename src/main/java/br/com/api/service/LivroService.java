@@ -1,10 +1,9 @@
 package br.com.api.service;
 
 import br.com.api.model.livro.Livro;
+import br.com.api.model.usuario.UsuarioDto;
 import br.com.api.repository.LivroRepository;
 import io.swagger.v3.oas.annotations.Operation;
-import jakarta.mail.MessagingException;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.domain.Example;
@@ -13,6 +12,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +31,7 @@ public class LivroService {
 
     private final LivroRepository livroRepository;
     private final RabbitTemplate rabbitTemplate;
+    private final EmailService emailService;
 
     @Operation(summary = "Busca todos os livros",
             description = "Retorna uma lista com todos os livros cadastrados.")
@@ -87,5 +90,74 @@ public class LivroService {
     private Example<Livro> createExample(Livro filter) {
         ExampleMatcher caseInsensitiveExampleMatcher = ExampleMatcher.matchingAll().withIgnoreCase();
         return Example.of(filter, caseInsensitiveExampleMatcher);
+    }
+
+    @Transactional
+    @Operation(summary = "Aluga um livro",
+              description = "Marca um livro como indisponivel e setta o UUID do usuário ao livro.")
+    public ResponseEntity<String> alugarLivro(Long livroId) {
+        Optional<Livro> livroOptional = livroRepository.findById(livroId);
+
+        var usuarioDto = getUsuarioLogado();
+
+        if (livroOptional.isEmpty()) {
+            return new ResponseEntity<>("Livro não encontrado", HttpStatus.NO_CONTENT);
+        }
+
+        Livro livro = livroOptional.get();
+        if (!livro.getDisponivel()) {
+            return new ResponseEntity<>("Livro indisponível", HttpStatus.CONFLICT);
+        }
+        livro.setDisponivel(false);
+        livro.setUuidUsuarioKeycloak(usuarioDto.getUuidUsuarioKeyCloak());
+        livroRepository.save(livro);
+
+        String menssagem = "O livro '" + livro.getTitulo() + "' foi alugado com sucesso!";
+        rabbitTemplate.convertAndSend(EXCHANGE_NAME, ROUTING_KEY, menssagem + livro.getTitulo());
+
+        //TODO Comentando para não ser chamado, pois o servico precisa ser configurado com credenciais reais para que funcione.
+        //TODO As configurações são manipuladas no application.properties.
+        //emailService.enviarEmail(usuarioDto.getEmail(), "Confirmação de Aluguel de livro", menssagem);
+
+        return new ResponseEntity<>("Livro alugado com sucesso", HttpStatus.OK);
+    }
+
+    @Transactional
+    @Operation(summary = "Devolve um livro",
+            description = "Marca um livro como disponivel e remove o UUID do usuário do livro.")
+    public ResponseEntity<String> devolverLivro(Long livroId) {
+        Optional<Livro> livroOptional = livroRepository.findById(livroId);
+
+        var usuarioDto = getUsuarioLogado();
+
+        if (livroOptional.isEmpty()) {
+            return new ResponseEntity<>("Livro não encontrado", HttpStatus.NO_CONTENT);
+        }
+
+        Livro livro = livroOptional.get();
+        if (livro.getDisponivel()) {
+            return new ResponseEntity<>("Livro não está alugado", HttpStatus.CONFLICT);
+        }
+
+        livro.setDisponivel(true);
+        livro.setUuidUsuarioKeycloak(null);
+        livroRepository.save(livro);
+
+        String menssagem = "O livro '" + livro.getTitulo() + "' foi devolvido com sucesso!";
+        rabbitTemplate.convertAndSend(EXCHANGE_NAME, ROUTING_KEY, menssagem + livro.getTitulo());
+
+        //TODO Comentando para não ser chamado, pois o servico precisa ser configurado com credenciais reais para que funcione.
+        //TODO As configurações são manipuladas no application.properties.
+        //emailService.enviarEmail(usuarioDto.getEmail(), "Confirmação de devolução do livro", menssagem);
+
+        return new ResponseEntity<>("Livro devolvido!", HttpStatus.OK);
+    }
+
+    private UsuarioDto getUsuarioLogado() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        Jwt jwt = (Jwt) authentication.getPrincipal();
+
+        return new UsuarioDto(jwt.getClaim("sub"), jwt.getClaim("email"), jwt.getClaim("given_name"), jwt.getClaim("family_name"));
     }
 }
